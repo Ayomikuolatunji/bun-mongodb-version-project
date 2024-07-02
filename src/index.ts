@@ -1,16 +1,17 @@
-import "dotenv/config"
+import "dotenv/config";
 import {
   connectDB,
-  createListing,
+  save,
   updateListing,
   getListingVersions,
   client,
+  getByUrl,
 } from "./services/listingService";
 
 const run = async () => {
   await connectDB();
 
-  const newListing = await createListing({
+  const newListing = await save({
     name: "Cafe Good Vibes",
     address: "123 Coffee St",
     phoneNumber: "555-1234",
@@ -30,6 +31,9 @@ const run = async () => {
 
   const versions = await getListingVersions(newListing._id!.toString());
   console.log("Listing Versions:", versions);
+
+  const fetchedListing = await getByUrl("http://cafegoodvibes.com");
+  console.log("Fetched Listing by URL:", fetchedListing);
 
   await client.close();
 };

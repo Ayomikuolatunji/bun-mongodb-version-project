@@ -10,6 +10,7 @@ export interface Listing {
   reviews?: string[];
   openingHours?: string;
   photos?: string[];
+  url_hash?: string; // New field for URL hash
   currentVersion?: number;
   createdAt?: Date;
   updatedAt?: Date;
