@@ -1,6 +1,7 @@
+import "dotenv/config";
 import { MongoClient, ObjectId } from "mongodb";
-import { Listing, ListingVersion } from "../models/listing";
-import crypto from "crypto";
+import type { Listing } from "../models/listing";
+import { createHash } from "crypto";
 
 const url = process.env.MONGO_URI!;
 const dbName = process.env.MONGODB_NAME;
@@ -8,7 +9,7 @@ const dbName = process.env.MONGODB_NAME;
 export const client = new MongoClient(url);
 const db = client.db(dbName);
 const listingsCollection = db.collection<Listing>("listings");
-const listingVersionsCollection = db.collection<ListingVersion>("listingVersions");
+const listingVersionsCollection = db.collection<Listing>("listingVersions");
 
 export const connectDB = async () => {
   try {
@@ -19,104 +20,101 @@ export const connectDB = async () => {
   }
 };
 
-export const save = async (payload: Listing) => {
-  const { website } = payload;
-  const urlHash = website ? crypto.createHash("sha256").update(website).digest("hex") : undefined;
+const calculateHash = (url: string): string => {
+  return createHash("sha256").update(url).digest("hex");
+};
+
+const isEqualExcludingMeta = (obj1: Listing, obj2: Listing): boolean => {
+  const { meta: meta1, ...data1 } = obj1;
+  const { meta: meta2, ...data2 } = obj2;
+  return JSON.stringify(data1) === JSON.stringify(data2);
+};
+
+export const save = async (listingData: Listing) => {
+  const urlHash = calculateHash(listingData.website || "");
 
   const existingListing = await listingsCollection.findOne({ url_hash: urlHash });
-  if (existingListing) {
-    const versionData = { ...existingListing, _id: undefined } as Omit<Listing, "_id">;
-    await listingVersionsCollection.insertOne({
-      ...versionData,
-      listingId: existingListing._id,
-      version: existingListing.currentVersion || 1,
-      createdAt: existingListing.createdAt!,
-      updatedAt: new Date(),
-    });
 
-    const updateResult = await listingsCollection.findOneAndUpdate(
-      { _id: existingListing._id },
-      {
-        $set: {
-          ...payload,
-          currentVersion: (existingListing.currentVersion || 1) + 1,
+  if (existingListing) {
+    const existingMeta = existingListing.meta || {
+      currentVersion: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    if (!isEqualExcludingMeta(existingListing, listingData)) {
+      const versionData = { ...existingListing, _id: undefined, meta: undefined } as Omit<
+        Listing,
+        "meta"
+      >;
+      await listingVersionsCollection.insertOne({
+        ...versionData,
+        listingId: existingListing._id,
+        version: existingMeta.currentVersion,
+        meta: {
+          ...existingMeta,
           updatedAt: new Date(),
         },
-      },
-      { returnDocument: "after" }
-    );
+      });
 
-    return updateResult as   Listing;
+      const updatedMeta = {
+        currentVersion: existingMeta.currentVersion + 1,
+        createdAt: existingMeta.createdAt,
+        updatedAt: new Date(),
+      };
+
+      const updateResult = await listingsCollection.findOneAndUpdate(
+        { _id: existingListing._id },
+        {
+          $set: {
+            ...listingData,
+            url_hash: urlHash,
+            meta: updatedMeta,
+          },
+        },
+        { returnDocument: "after" }
+      );
+
+      return updateResult as Listing;
+    } else {
+      return existingListing;
+    }
   } else {
-    const result = await listingsCollection.insertOne({
-      ...payload,
-      url_hash: urlHash,
+    const newMeta = {
       currentVersion: 1,
       createdAt: new Date(),
       updatedAt: new Date(),
+    };
+
+    const result = await listingsCollection.insertOne({
+      ...listingData,
+      url_hash: urlHash,
+      meta: newMeta,
     });
 
     return {
-      ...payload,
+      ...listingData,
       _id: result.insertedId,
       url_hash: urlHash,
-      currentVersion: 1,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      meta: newMeta,
     };
   }
 };
 
 export const getById = async (id: string) => {
   const objectId = new ObjectId(id);
-  const listing = await listingsCollection.findOne({ _id: objectId });
-  if (listing) return listing;
-
-  const version = await listingVersionsCollection.findOne(
-    { listingId: objectId },
-    { sort: { version: -1 } }
-  );
-  return version ? { ...version, _id: version.listingId } : null;
+  return await listingsCollection.findOne({ _id: objectId });
 };
 
 export const getByUrl = async (url: string) => {
-  const urlHash = crypto.createHash("sha256").update(url).digest("hex");
-  return listingsCollection.findOne({ url_hash: urlHash });
+  const urlHash = calculateHash(url);
+  return await listingsCollection.findOne({ url_hash: urlHash });
 };
 
 export const getListingVersions = async (listingId: string) => {
   const objectId = new ObjectId(listingId);
-  return listingVersionsCollection.find({ listingId: objectId }).sort({ version: -1 }).toArray();
-};
-
-export const updateListing = async (listingId: string, updatedData: Partial<Listing>) => {
-  const objectId = new ObjectId(listingId);
-  const listing = await listingsCollection.findOne({ _id: objectId });
-  if (!listing) throw new Error("Listing not found");
-
-  const versionData = { ...listing, currentVersion: undefined, _id: undefined } as Omit<
-    Listing,
-    "currentVersion"
-  >;
-  await listingVersionsCollection.insertOne({
-    ...versionData,
-    listingId: objectId,
-    version: listing.currentVersion || 1,
-    createdAt: listing.createdAt!,
-    updatedAt: new Date(),
-  });
-
-  const updateResult = await listingsCollection.findOneAndUpdate(
-    { _id: objectId },
-    {
-      $set: {
-        ...updatedData,
-        currentVersion: (listing.currentVersion || 1) + 1,
-        updatedAt: new Date(),
-      },
-    },
-    { returnDocument: "after" }
-  );
-
-  return updateResult as Listing;
+  return await listingVersionsCollection
+    .find({ listingId: objectId })
+    .sort({ version: -1 })
+    .toArray();
 };

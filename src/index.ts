@@ -1,11 +1,9 @@
-import "dotenv/config";
 import {
   connectDB,
   save,
-  updateListing,
-  getListingVersions,
-  client,
+  getById,
   getByUrl,
+  client,
 } from "./services/listingService";
 
 const run = async () => {
@@ -23,17 +21,11 @@ const run = async () => {
   });
   console.log("Created Listing:", newListing);
 
-  const updatedListing = await updateListing(newListing._id!.toString(), {
-    rating: 4.7,
-    reviews: [...(newListing.reviews || []), "Amazing ambiance!"],
-  });
-  console.log("Updated Listing:", updatedListing);
+  const retrievedListingByUrl = await getByUrl("http://cafegoodvibes.com");
+  console.log("Retrieved Listing by URL:", retrievedListingByUrl);
 
-  const versions = await getListingVersions(newListing._id!.toString());
-  console.log("Listing Versions:", versions);
-
-  const fetchedListing = await getByUrl("http://cafegoodvibes.com");
-  console.log("Fetched Listing by URL:", fetchedListing);
+  const retrievedListingById = await getById(newListing._id!.toString());
+  console.log("Retrieved Listing by ID:", retrievedListingById);
 
   await client.close();
 };
