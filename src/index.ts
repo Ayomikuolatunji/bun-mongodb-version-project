@@ -1,3 +1,4 @@
+import "dotenv/config"
 import {
   connectDB,
   createListing,
@@ -9,7 +10,6 @@ import {
 const run = async () => {
   await connectDB();
 
-  // Create a new listing
   const newListing = await createListing({
     name: "Cafe Good Vibes",
     address: "123 Coffee St",
@@ -22,14 +22,12 @@ const run = async () => {
   });
   console.log("Created Listing:", newListing);
 
-  // Update the listing
   const updatedListing = await updateListing(newListing._id!.toString(), {
     rating: 4.7,
     reviews: [...(newListing.reviews || []), "Amazing ambiance!"],
   });
   console.log("Updated Listing:", updatedListing);
 
-  // Retrieve listing versions
   const versions = await getListingVersions(newListing._id!.toString());
   console.log("Listing Versions:", versions);
 

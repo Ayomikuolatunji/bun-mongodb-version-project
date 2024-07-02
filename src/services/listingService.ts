@@ -1,25 +1,30 @@
-import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import type { Listing, ListingVersion } from "../models/listing";
 
-const uri = "mongodb://root:example@localhost:27017";
-const dbName = "my-versioning-project";
+const url = process.env.MONGO_URI!;
+const dbName = process.env.MONGODB_NAME;
 
-export const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
-});
+export const client = new MongoClient(url);
 const db = client.db(dbName);
 const listingsCollection = db.collection<Listing>("listings");
 const listingVersionsCollection = db.collection<ListingVersion>("listingVersions");
 
+const connectWithRetry = async () => {
+  try {
+    await client.connect();
+    console.log("Connected to MongoDB");
+    return;
+  } catch (error) {
+    console.error("Failed to connect to MongoDB...", error);
+    throw new Error("Failed to connect to MongoDB");
+  }
+};
+
 export const connectDB = async () => {
   try {
-    return await client.connect();
+    await connectWithRetry();
   } catch (error) {
-    console.error(error);
+    console.error("Unable to connect to MongoDB:", error);
   }
 };
 
@@ -50,10 +55,10 @@ export const updateListing = async (listingId: string, updatedData: Partial<List
     "currentVersion"
   >;
   await listingVersionsCollection.insertOne({
+    ...versionData,
     listingId: objectId,
     version: listing.currentVersion || 1,
-    data: versionData,
-    createdAt: new Date(),
+    createdAt: listing.createdAt!,
     updatedAt: new Date(),
   });
 
@@ -75,4 +80,16 @@ export const updateListing = async (listingId: string, updatedData: Partial<List
 export const getListingVersions = async (listingId: string) => {
   const objectId = new ObjectId(listingId);
   return listingVersionsCollection.find({ listingId: objectId }).sort({ version: -1 }).toArray();
+};
+
+export const getById = async (id: string) => {
+  const objectId = new ObjectId(id);
+  const listing = await listingsCollection.findOne({ _id: objectId });
+  if (listing) return listing;
+
+  const version = await listingVersionsCollection.findOne(
+    { listingId: objectId },
+    { sort: { version: -1 } }
+  );
+  return version ? { ...version, _id: version.listingId } : null;
 };

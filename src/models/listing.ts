@@ -19,7 +19,14 @@ export interface ListingVersion {
   _id?: ObjectId;
   listingId: ObjectId;
   version: number;
-  data: Omit<Listing, "currentVersion">;
-  createdAt?: Date;
-  updatedAt?: Date;
+  name: string;
+  address: string;
+  phoneNumber: string;
+  website?: string;
+  rating?: number;
+  reviews?: string[];
+  openingHours?: string;
+  photos?: string[];
+  createdAt: Date;
+  updatedAt: Date;
 }
